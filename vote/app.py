@@ -1,10 +1,7 @@
 from flask import Flask, render_template, request, make_response, g
 from redis import Redis
 import os
-import socket
-import random
-import json
-import logging
+import socket, random, json, logging, base64, io, qrcode
 
 option_a = os.getenv('OPTION_A', "Star Trek")
 option_b = os.getenv('OPTION_B', "StarWars")
@@ -23,6 +20,26 @@ def get_redis():
 
 @app.route("/", methods=['POST','GET'])
 def hello():
+    url = request.url_root
+    # Generate the QR code for the current URL
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill='black', back_color='white')
+
+    # Save the QR code as an in-memory file
+    img_io = io.BytesIO()
+    img.save(img_io, 'PNG')
+    img_io.seek(0)
+
+    # Encode the image to base64
+    img_base64 = base64.b64encode(img_io.getvalue()).decode('ascii')
+
     voter_id = request.cookies.get('voter_id')
     if not voter_id:
         voter_id = hex(random.getrandbits(64))[2:-1]
@@ -42,6 +59,7 @@ def hello():
         option_b=option_b,
         hostname=hostname,
         vote=vote,
+        qr_code_base64=img_base64,
     ))
     resp.set_cookie('voter_id', voter_id)
     return resp
